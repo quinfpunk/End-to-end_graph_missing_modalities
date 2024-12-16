@@ -95,6 +95,7 @@ class eICUDataset(Dataset):
         #         age, gender, ethnicity, types, codes
         #     )
         #     label = torch.tensor(label)
+        # useless code, maybe ? 
         if not self.return_raw:
             '''
                 treatment, medication, diagnosis
@@ -178,6 +179,38 @@ if __name__ == "__main__":
     print(item["types"].shape)
     print(item["codes"].shape)
     print(item["label"].shape)
+
+    ### modified code
+    import pandas as pd
+    training = {}
+    training["id"] = []
+    training["label"] = []
+    # create a dataframe with a column for each feature that could be missing (a "_flag" column exist in the dataset
+    missing_values = pd.DataFrame(columns=list(pd.DataFrame(dataset[0]).filter(regex="_flag$", axis=1)))
+    for elt in dataset:
+        training["id"].append(elt["id"])
+        training["label"].append(elt["label"])
+
+        elt_df = pd.DataFrame(elt)
+        # for each {column_name}_flag if 0 adds to missing with "id": ["column_name_of_missing", ...]
+        for missing_flag in elt_df.filter(regex="_flag$", axis=1):
+            # is 0 the value to say it is missing ?
+            if elt[missing_flag] == 0:
+                # for this id add the missing flag to 1 (this means it is missing)
+                missing_values.loc[elt["id"], missing_flag] = 1
+    missing_values = missing_values.fillna(0, method='backfill')
+
+    # save train_indexed
+    training_df = pd.DataFrame(training)
+    # maybe the path to tsv should be defined using the processed_path in utils ?
+    training_df.to_csv("train_indexed.tsv", sep='\t')
+
+    # save missing features, one tsv per feature
+    for col in missing_values.columns:
+        # check that the tsv is not ill formed
+        missing_values[col].to_csv(f"{col}_missing.tsv", sep='\t')
+        
+
 
     data_loader = DataLoader(dataset, batch_size=32, collate_fn=eicu_collate_fn, shuffle=True)
     batch = next(iter(data_loader))
