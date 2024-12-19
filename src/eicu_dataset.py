@@ -72,17 +72,17 @@ class eICUDataset(Dataset):
         '''
         treatment = icu_stay.treatment
         treatment_flag = True
-        if treatment is None:
+        if len(treatment) == 0:
             treatment_flag = False
 
         medication = icu_stay.medication
         medication_flag = True
-        if medication is None:
+        if len(medication) == 0:
             medication_flag = False
 
         diagnosis = icu_stay.diagnosis
         diagnosis_flag = True
-        if diagnosis is None:
+        if len(diagnosis) == 0:
             diagnosis_flag = False
 
         label = float(getattr(icu_stay, self.task))
@@ -167,7 +167,8 @@ if __name__ == "__main__":
     # print(item["label"])
 
     from torch.utils.data import DataLoader
-    # from src.utils import eicu_collate_fn
+
+    from dataset.utils import eicu_collate_fn
 
     dataset = eICUDataset(split="train", task="mortality", load_no_label=True)
     print(len(dataset))
@@ -182,23 +183,26 @@ if __name__ == "__main__":
 
     ### modified code
     import pandas as pd
+    from tqdm import tqdm
+
     training = {}
     training["id"] = []
     training["label"] = []
     # create a dataframe with a column for each feature that could be missing (a "_flag" column exist in the dataset
     present_values = pd.DataFrame()
-    for elt in dataset:
+    for elt in tqdm(dataset):
         training["id"].append(elt["id"])
         training["label"].append(elt["label"])
 
-        elt_df = pd.DataFrame(elt)
+        # elt_df = pd.DataFrame(elt)
         # for each {column_name}_flag if 0 adds to missing with "id": ["column_name_of_missing", ...]
-        for present_flag in elt_df.filter(regex="_flag$", axis=1):
+        # for present_flag in elt_df.filter(regex="_flag$", axis=1):
+        for present_flag in elt.keys():
             # for this id add the present flag to False (this means it is missing)
-            present_values.loc[elt["id"], present_flag] = elt[present_flag]
+            if "_flag" in present_flag:
+                present_values.loc[elt["id"], present_flag] = elt[present_flag]
     # just to be safe ?
-    present_values = present_values.fillna(False, method='backfill')
-    filtered_missing_values = present_values[present_values == False]
+    present_values = present_values.fillna(False)
 
     # save train_indexed
     training_df = pd.DataFrame(training)
@@ -206,23 +210,23 @@ if __name__ == "__main__":
     training_df.to_csv("train_indexed.tsv", sep='\t')
 
     # save present features, one tsv per feature
-    for col in filtered_missing_values.columns:
+    for col in present_values.columns:
         # check that the tsv is not ill formed
-        filtered_missing_values[col].to_csv(f"{col}_filtered_missing.tsv", sep='\t')
-        
+        filtered_missing_values = present_values.loc[present_values[col] == False]
+        filtered_missing_values = filtered_missing_values.reset_index()[['index']]
+        filtered_missing_values.to_csv(f"{col}_filtered_missing.tsv", sep='\t')
 
-
-    data_loader = DataLoader(dataset, batch_size=32, collate_fn=eicu_collate_fn, shuffle=True)
-    batch = next(iter(data_loader))
-    print(batch["age"])
-    print(batch["gender"])
-    print(batch["ethnicity"])
-    print(batch["types"].shape)
-    print(batch["codes"].shape)
-    print(batch["codes_flag"])
-    print(batch["labvectors"].shape)
-    print(batch["labvectors_flag"])
-    print(batch["apacheapsvar"])
-    print(batch["apacheapsvar_flag"])
-    print(batch["label"])
-    print(batch["label_flag"])
+    # data_loader = DataLoader(dataset, batch_size=32, collate_fn=eicu_collate_fn, shuffle=True)
+    # batch = next(iter(data_loader))
+    # print(batch["age"])
+    # print(batch["gender"])
+    # print(batch["ethnicity"])
+    # print(batch["types"].shape)
+    # print(batch["codes"].shape)
+    # print(batch["codes_flag"])
+    # print(batch["labvectors"].shape)
+    # print(batch["labvectors_flag"])
+    # print(batch["apacheapsvar"])
+    # print(batch["apacheapsvar_flag"])
+    # print(batch["label"])
+    # print(batch["label_flag"])
