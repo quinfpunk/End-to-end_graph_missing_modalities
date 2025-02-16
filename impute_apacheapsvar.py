@@ -1,109 +1,133 @@
 import torch
-import pandas as pd
-import os
 import argparse
 import numpy as np
-from torch_sparse import SparseTensor, mul, sum, fill_diag, matmul, eye, mul_nnz
-from src.eicu_dataset import eICUDataset
-import scipy.sparse as sp
-from eICU_similarity import eICUPatientSimilarity
+from torch_sparse import SparseTensor, mul, sum, fill_diag, matmul
+from src.dataset.eicu_dataset import eICUDataset
+from src.eICU_similarity import eICUPatientSimilarity
 from tqdm import tqdm
 
 np.random.seed(42)
 
-dataset = eICUDataset(split="train", task="mortality", load_no_label=True)
+
+def get_patient_patient():
+    # all modalities
+    # merge imputed and the original data
+    patient_patient = age_similarity.matrix + gender_similarity.matrix + ethnicity_similarity.matrix
+
+    knn_val, knn_ind = torch.topk(torch.tensor(patient_patient, device=device), args.top_k, dim=-1)
+    items_cols = torch.flatten(knn_ind).to(device)
+    ir = torch.tensor(list(range(patient_patient.shape[0])), dtype=torch.int64, device=device)
+    items_rows = torch.repeat_interleave(ir, args.top_k).to(device)
+    final_adj = SparseTensor(row=items_rows,
+                             col=items_cols,
+                             value=torch.tensor([1.0] * items_rows.shape[0], device=device),
+                             sparse_sizes=(patient_patient.shape[0], patient_patient.shape[0]))
+    return final_adj
+
+
+def compute_normalized_laplacian(adj, norm, fill_value=0.):
+    adj = fill_diag(adj, fill_value=fill_value)
+    deg = sum(adj, dim=-1)
+    deg_inv_sqrt = deg.pow_(-norm)
+    deg_inv_sqrt.masked_fill_(deg_inv_sqrt == float('inf'), 0.)
+    adj_t = mul(adj, deg_inv_sqrt.view(-1, 1))
+    adj_t = mul(adj_t, deg_inv_sqrt.view(1, -1))
+    return adj_t
 
 
 parser = argparse.ArgumentParser(description="Run imputation.")
 # parser.add_argument('--data', type=str, default='Office_Products')
 parser.add_argument('--gpu', type=str, default='0')
 parser.add_argument('--layers', type=int, default=1)
-parser.add_argument('--method', type=str, default='neigh_mean')
+parser.add_argument('--method', type=str, default='feat_prop')
 parser.add_argument('--alpha', type=float, default=0.1)
 parser.add_argument('--top_k', type=int, default=20)
 args = parser.parse_args()
 
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 device = torch.device('cpu')
-
-# visual_folder = f'data/visual_embeddings/torch/ResNet50/avgpool'
-# textual_folder = f'data/textual_embeddings/sentence_transformers/sentence-transformers/all-mpnet-base-v2/1'
-
 output_apacheapsvar = f'src/apacheapsvar_embeddings_{args.method}'
+dataset = eICUDataset(split="train", task="mortality", load_no_label=True, data_size="big")
 
-try:
-    missing_apacheapsvar = pd.read_csv(os.path.join(f'src', 'apacheapsvar_flag_filtered_missing.tsv'), sep='\t', header=None)
-    missing_apacheapsvar = set(missing_apacheapsvar[1][1:].tolist())
-except pd.errors.EmptyDataError:
-    missing_apacheapsvar = set()
+patient_similarity = eICUPatientSimilarity(dataset)
+age_similarity, gender_similarity, ethnicity_similarity = patient_similarity.get_similarity()
+apacheapsvar_similarity = patient_similarity.get_apacheapsvar_similarity()
 
-# print(len(missing_apacheapsvar))
+# if args.method == 'feat_prop':
+#     if not os.path.exists(output_apacheapsvar + f'_{args.top_k}_indexed'):
+#         os.makedirs(output_apacheapsvar + f'_{args.top_k}_indexed')
 
-if args.method == 'neigh_mean':
-    if not os.path.exists(output_apacheapsvar + f'_{args.top_k}_indexed'):
-        os.makedirs(output_apacheapsvar + f'_{args.top_k}_indexed')
 
-if args.method == 'neigh_mean':
-    # code_folder with all embedding
-    apacheapsvar_folder = f'src/processed_data/embeddings'
+if args.method == 'feat_prop':
+    # apacheapsvar_folder = f'data/{args.data}/visual_embeddings_indexed'
+    #
+    # apacheapsvar_shape = np.load(os.path.join(apacheapsvar_folder, os.listdir(apacheapsvar_folder)[0])).shape
+    #
+    # output_apacheapsvar = f'data/{args.data}/apacheapsvar_embeddings_{args.method}_{args.layers}_{args.top_k}_indexed'
+    #
+    # try:
+    #     train = pd.read_csv(f'data/{args.data}/train_indexed.tsv', sep='\t', header=None)
+    # except FileNotFoundError:
+    #     print('Before imputing through feat_prop, split the dataset into train/val/test!')
+    #     exit()
 
-    # apacheapsvar_embedding dataframe
-    apacheapsvar_embeddings = pd.read_csv(os.path.join(apacheapsvar_folder, 'apacheapsvar_embeddings.tsv'), sep='\t', header=0)
+    num_items_apacheapsvar = len(dataset)
 
-    # shape
-    temp = apacheapsvar_embeddings.loc[1]['embedding'].strip()[7:-1]
-    temp = eval(f"{temp}")
-    apacheapsvar_shape = len(temp)
+    apacheapsvar_features = torch.zeros((num_items_apacheapsvar, len(dataset[0]['apacheapsvar'])))
 
-    output_apacheapsvar = f'src/apacheapsvar_embeddings_{args.method}_{args.top_k}_indexed'
+    # age gender ethnicity adjacency matrix
+    adj = get_patient_patient()
 
-    try:
-        train = pd.read_csv(f'src/train_indexed.tsv', sep='\t', header=None)
-        train = train.drop(index=0)
-        train[1] = train[1].apply(lambda x: int(x))
-        train[2] = train[2].apply(lambda x: int(x[7:-2]))
-    except FileNotFoundError:
-        print('Before imputing through neigh_mean, split the dataset into train/val/test!')
-        exit()
-    # print(train[1])
-    # print(train[1].min())
+    # normalize adjacency matrix
+    adj = compute_normalized_laplacian(adj, 0.5)
 
-    num_items_apacheapsvar = len(missing_apacheapsvar) + len(apacheapsvar_embeddings)
-    print(apacheapsvar_embeddings[apacheapsvar_embeddings['id'] == 2744154])
-    print("num_items_apacheapsvar: ", num_items_apacheapsvar)
+    # try:
+    #     missing_apacheapsvar_indexed = pd.read_csv(os.path.join(f'data/{args.data}', 'missing_visual_indexed.tsv'), sep='\t',
+    #                                          header=None)
+    #     missing_apacheapsvar_indexed = set(missing_apacheapsvar_indexed[0].tolist())
+    # except (pd.errors.EmptyDataError, FileNotFoundError):
+    #     missing_apacheapsvar_indexed = set()
+    missing_apacheapsvar_indexed = set(dataset.all_hosp_adm_dict.keys()) - set(apacheapsvar_similarity.index_table)
+    missing_index_id_map = []
 
-    apacheapsvar_features = torch.zeros((num_items_apacheapsvar, apacheapsvar_shape), device=device)
+    # feat prop on visual features
+    # for f in os.listdir(f'data/{args.data}/visual_embeddings_indexed'):
+    #     apacheapsvar_features[int(f.split('.npy')[0]), :] = torch.from_numpy(
+    #         np.load(os.path.join(f'data/{args.data}/visual_embeddings_indexed', f)))
+    index_id_map = []
+    for i in tqdm(range(len(dataset))):
+        index_id_map.append(dataset[i]['id'])
+        if (not torch.any(dataset[i]['apacheapsvar'] == -1)) and dataset[i]['apacheapsvar_flag']:
+            apacheapsvar_features[i] = dataset[i]['apacheapsvar']
 
-    # adj = get_item_item()
+    # non_missing_items = list(set(list(range(num_items_apacheapsvar))).difference(missing_apacheapsvar_indexed))
+    non_missing_items = apacheapsvar_similarity.index_table
+    non_missing_index_id_map = []
+    propagated_apacheapsvar_features = apacheapsvar_features.clone()
+    for item in missing_apacheapsvar_indexed:
+        if item in index_id_map:
+            missing_index_id_map.append(index_id_map.index(item))
+    for item in non_missing_items:
+        if item in index_id_map:
+            non_missing_index_id_map.append(index_id_map.index(item))
 
-    try:
-        missing_apacheapsvar_indexed = pd.read_csv(os.path.join(f'src', 'apacheapsvar_flag_filtered_missing.tsv'), sep='\t',
-                                             header=0)
-        missing_apacheapsvar_indexed = set(missing_apacheapsvar_indexed['index'].tolist())
-    except (pd.errors.EmptyDataError, FileNotFoundError):
-        missing_apacheapsvar_indexed = set()
+    for idx in range(args.layers):
+        print(f'[ApacheApsVar] Propagation layer: {idx + 1}')
+        propagated_apacheapsvar_features = matmul(adj.to(device), propagated_apacheapsvar_features.to(device))
+        # non_missing_items map
+        propagated_apacheapsvar_features[non_missing_index_id_map] = apacheapsvar_features[non_missing_index_id_map].to(device)
 
-    # print(len(missing_apacheapsvar_indexed))
+    # save results
+    # for miss in missing_apacheapsvar_indexed:
+    #     np.save(os.path.join(output_apacheapsvar, f'{miss}.npy'), propagated_apacheapsvar_features[miss].detach().cpu().numpy())
+    imputed_apacheapsvar = torch.zeros((num_items_apacheapsvar, len(dataset[0]['apacheapsvar'])))
+    for i in range(num_items_apacheapsvar):
+        imputed_apacheapsvar[i] = dataset[i]['apacheapsvar']
+    for miss in missing_index_id_map:
+        # check dataset，replace -1
+        for i in range(len(imputed_apacheapsvar[0])):
+            if imputed_apacheapsvar[miss][i] == -1:
+                imputed_apacheapsvar[miss][i] = propagated_apacheapsvar_features[miss][i]
 
-    for i in range(len(apacheapsvar_embeddings)):
-        id = apacheapsvar_embeddings.iloc[i]['id']
-        embedding = apacheapsvar_embeddings[apacheapsvar_embeddings['id'] == id]['embedding'].item()  # str
-        embedding = embedding.strip()[7:-1]
-        embedding = eval(f'{embedding}')  # list
-        embedding = torch.tensor(embedding)  # tensor
-        apacheapsvar_features[i, :] = embedding
-    # print(train[train[0] == 0][1])
-
-    patient_similarity = eICUPatientSimilarity(dataset, train)
-
-    # Similarity matrix
-    similarity = patient_similarity.get_similarity()
-    print("similarity shape: ", similarity.size())
-    for miss in tqdm(missing_apacheapsvar_indexed):
-        idx = train[train[1] == miss][0].item()
-        topk = 20
-        first_hop = torch.topk(similarity[idx], k=topk)
-        mean_ = apacheapsvar_features[first_hop].mean(axis=0, keepdims=True)
-
-    apacheapsvar_features = apacheapsvar_features.numpy()
-    np.savetxt("apacheapsvar_features", apacheapsvar_features, delimiter="\t", fmt="%.4f")
+    # print(imputed_apacheapsvar.shape)
+    print(dataset[0]['apacheapsvar'])
+    print(imputed_apacheapsvar[0])
