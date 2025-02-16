@@ -3,12 +3,12 @@ import os
 import torch
 from torch.utils.data import Dataset
 
-from src.tokenizer import eICUTokenizer
+from src.dataset.tokenizer import eICUTokenizer
 from src.utils import processed_data_path, read_txt, load_pickle
 
 
-class eICUDataset(Dataset):
-    def __init__(self, split, task, load_no_label=False, dev=False, return_raw=False):
+class eICUDataset(Dataset, ):
+    def __init__(self, split, task, load_no_label=False, dev=False, return_raw=False, data_size=""):
         if dev:
             assert split == "train"
         if load_no_label:
@@ -16,7 +16,12 @@ class eICUDataset(Dataset):
         self.load_no_label = load_no_label
         self.split = split
         self.task = task
-        self.all_hosp_adm_dict = load_pickle(os.path.join(processed_data_path, "eicu/icu_stay_dict.pkl"))
+        if data_size == "small":
+            self.all_hosp_adm_dict = load_pickle(os.path.join(processed_data_path, "eicu/small_icu_stay_dict.pkl"))
+        elif data_size == "big":
+            self.all_hosp_adm_dict = load_pickle(os.path.join(processed_data_path, "eicu/big_icu_stay_dict.pkl"))
+        else:
+            self.all_hosp_adm_dict = load_pickle(os.path.join(processed_data_path, "eicu/icu_stay_dict.pkl"))
         included_admission_ids = read_txt(
             os.path.join(processed_data_path, f"eicu/task-{task}/{split}_admission_ids.txt"))
         self.no_label_admission_ids = []
@@ -32,10 +37,11 @@ class eICUDataset(Dataset):
         self.tokenizer = eICUTokenizer()
 
     def __len__(self):
-        return len(self.included_admission_ids)
+        return len(self.all_hosp_adm_dict)
 
     def __getitem__(self, index):
-        icu_id = self.included_admission_ids[index]
+        keys = list(self.all_hosp_adm_dict.keys())
+        icu_id = keys[index]
         # icu_stay: eICUData
         icu_stay = self.all_hosp_adm_dict[icu_id]
 
@@ -70,20 +76,26 @@ class eICUDataset(Dataset):
         '''
             treatment, medication, diagnosis
         '''
-        treatment = icu_stay.treatment
-        treatment_flag = True
-        if len(treatment) == 0:
+        if len(icu_stay.treatment) == 0:
+            treatment = torch.tensor([])
             treatment_flag = False
+        else:
+            treatment = [t[2] for t in icu_stay.treatment]
+            treatment_flag = True
 
-        medication = icu_stay.medication
-        medication_flag = True
-        if len(medication) == 0:
+        if len(icu_stay.medication) == 0:
+            medication = torch.tensor([])
             medication_flag = False
+        else:
+            medication = [m[2] for m in icu_stay.medication]
+            medication_flag = True
 
-        diagnosis = icu_stay.diagnosis
-        diagnosis_flag = True
-        if len(diagnosis) == 0:
+        if len(icu_stay.diagnosis) == 0:
+            diagnosis = torch.tensor([])
             diagnosis_flag = False
+        else:
+            diagnosis = [d[2] for d in icu_stay.diagnosis]
+            diagnosis_flag = True
 
         label = float(getattr(icu_stay, self.task))
         label_flag = True
@@ -151,82 +163,17 @@ class eICUDataset(Dataset):
 
         return return_dict
 
+    def get_item_by_id(self, id):
+        return self.all_hosp_adm_dict[id]
+
 
 if __name__ == "__main__":
-    # dataset = eICUDataset(split="train", task="mortality", load_no_label=True, return_raw=True)
-    # print(len(dataset))
-    # item = dataset[0]
-    # print(item["id"])
-    # print(item["age"])
-    # print(item["gender"])
-    # print(item["ethnicity"])
-    # print(len(item["types"]))
-    # print(len(item["codes"]))
-    # print(item["labvectors"].shape)
-    # print(item["apacheapsvar"].shape)
-    # print(item["label"])
-
-    from torch.utils.data import DataLoader
-
-    from dataset.utils import eicu_collate_fn
-
-    dataset = eICUDataset(split="train", task="mortality", load_no_label=True)
+    # test
+    dataset = eICUDataset(split="train", task="mortality", load_no_label=True, data_size="small")
     print(len(dataset))
     item = dataset[0]
     print(item["id"])
     print(item["age"])
     print(item["gender"])
     print(item["ethnicity"])
-    # print(item["types"].shape)
-    # print(item["codes"].shape)
-    # print(item["label"].shape)
-
-    ### modified code
-    import pandas as pd
-    from tqdm import tqdm
-
-    training = {}
-    training["id"] = []
-    training["label"] = []
-    # create a dataframe with a column for each feature that could be missing (a "_flag" column exist in the dataset
-    present_values = pd.DataFrame()
-    for elt in tqdm(dataset):
-        training["id"].append(elt["id"])
-        training["label"].append(elt["label"])
-
-        # elt_df = pd.DataFrame(elt)
-        # for each {column_name}_flag if 0 adds to missing with "id": ["column_name_of_missing", ...]
-        # for present_flag in elt_df.filter(regex="_flag$", axis=1):
-        for present_flag in elt.keys():
-            # for this id add the present flag to False (this means it is missing)
-            if "_flag" in present_flag:
-                present_values.loc[elt["id"], present_flag] = elt[present_flag]
-    # just to be safe ?
-    present_values = present_values.fillna(False)
-
-    # save train_indexed
-    training_df = pd.DataFrame(training)
-    # maybe the path to tsv should be defined using the processed_path in utils ?
-    training_df.to_csv("train_indexed.tsv", sep='\t')
-
-    # save present features, one tsv per feature
-    for col in present_values.columns:
-        # check that the tsv is not ill formed
-        filtered_missing_values = present_values.loc[present_values[col] == False]
-        filtered_missing_values = filtered_missing_values.reset_index()[['index']]
-        filtered_missing_values.to_csv(f"{col}_filtered_missing.tsv", sep='\t')
-
-    # data_loader = DataLoader(dataset, batch_size=32, collate_fn=eicu_collate_fn, shuffle=True)
-    # batch = next(iter(data_loader))
-    # print(batch["age"])
-    # print(batch["gender"])
-    # print(batch["ethnicity"])
-    # print(batch["types"].shape)
-    # print(batch["codes"].shape)
-    # print(batch["codes_flag"])
-    # print(batch["labvectors"].shape)
-    # print(batch["labvectors_flag"])
-    # print(batch["apacheapsvar"])
-    # print(batch["apacheapsvar_flag"])
-    # print(batch["label"])
-    # print(batch["label_flag"])
+    print(item["apacheapsvar"])
