@@ -4,7 +4,7 @@ import logging
 import os
 import pickle
 import random
-import warnings
+import sys
 
 import numpy as np
 import torch
@@ -15,8 +15,8 @@ project_path = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__f
 project_name = ''
 # server_name = os.uname()[1]
 server_name = platform.uname()[1]
-remote_root = "C:\\Users\\71052\\Desktop\\embedding\\src"
-# remote_root = "/content/drive/MyDrive/MUSE-main/src/"
+remote_root = "xxx\\SimilarityGraph\\src"
+sys.path.append("../src/dataset")
 
 try:
     raw_data_path = os.path.join(remote_root, "dataset\\")
