@@ -48,9 +48,12 @@ class eICUData:
                f"readmission-{self.readmission}"
 
     def data_print(self):
-        print(f" ICU ID: {self.icu_id} ({self.icu_duration} min) \n Admission ID: {self.admission_id} \n Patient ID: {self.patient_id} \n "
-              f"Hospital ID: {self.hospital_id} \n Age: {self.age} \n Gender: {self.gender} \n Ethnicity: {self.ethnicity} \n "
-              f"Mortality: {self.mortality} \n Readmission: {self.readmission}")
+        print(f" ICU ID: {self.icu_id} ({self.icu_duration} min) \n Age: {self.age} \n Gender: {self.gender} \n Ethnicity: {self.ethnicity}")
         print(f"  Diagnosis: {self.diagnosis} \n  Treatment: {self.treatment} \n  Medication: {self.medication} \n  "
-              f"Trajectory: {self.trajectory} \n  Lab: {self.lab} \n  Lab vectors: {self.labvectors} \n  Apacheapsvar: {self.apacheapsvar}")
+              f"Lab: {self.lab} \n "
+              f"Labvectors: {self.labvectors}"
+              f"\n  Apacheapsvar: {self.apacheapsvar}")
+        # print(f"Diagnosis: {len(self.diagnosis)}   Treatment: {len(self.treatment)}   Medication: {len(self.medication)}")
+        # print(f"Trajectory[0]: {self.trajectory[0]}")
+        # print(f"Trajectory[1]: {self.trajectory[1]}")
         return
