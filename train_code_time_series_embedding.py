@@ -3,8 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from embedding.bert_embedding import segment_time_series, WindowEncoder, TimeSeriesBERTCLS
 from torch.utils.data import DataLoader
-from src.dataset.eicu_dataset import eICUDataset
-from src.dataset.utils import mimic4_collate_fn, eicu_collate_fn
+from eicu_dataset import eICUDataset
 from torch.utils.data import TensorDataset
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -53,7 +52,6 @@ if __name__ == "__main__":
     # windows_batch: list of window tokens, each token is (test_names_tensor, test_values_tensor)
     # target: Tensor containing the ground truth for the batch (e.g., regression targets).
 
-    collate_fn = eicu_collate_fn
     train_set = eICUDataset(split="train", task="mortality", load_no_label=True, data_size="big")
 
     data = [] # train_set[0]["codes"]
