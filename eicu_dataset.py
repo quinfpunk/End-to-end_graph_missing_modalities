@@ -58,6 +58,7 @@ class eICUDataset(Dataset, ):
         codes = icu_stay.trajectory[1]
         codes_flag = True
 
+        lab = icu_stay.lab
         labvectors = icu_stay.labvectors
         labvectors_flag = True
         if labvectors is None:
@@ -141,6 +142,7 @@ class eICUDataset(Dataset, ):
         return_dict["codes"] = codes
         return_dict["codes_flag"] = codes_flag
 
+        return_dict["lab"] = lab
         return_dict["labvectors"] = labvectors
         return_dict["labvectors_flag"] = labvectors_flag
 

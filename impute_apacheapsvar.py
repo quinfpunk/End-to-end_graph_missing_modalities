@@ -8,6 +8,7 @@ from src.eicu_dataset import eICUDataset
 import scipy.sparse as sp
 from eICU_similarity import eICUPatientSimilarity
 from tqdm import tqdm
+from snf import compute
 
 np.random.seed(42)
 

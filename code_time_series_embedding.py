@@ -1,0 +1,112 @@
+from embedding.bert_embedding import segment_time_series, WindowEncoder, TimeSeriesBERTCLS
+from eicu_dataset import eICUDataset
+import torch
+from tqdm import tqdm
+
+def get_embedding(d, window_size, path):
+    """
+        @brief: return embedding for a given patient data
+        @arguments:
+            d: patient data
+            window_size: 
+            path: path to the embedding model
+    """
+    return output
+
+if __name__ == "__main__":
+    # preprocess on codes data to get this format
+    # data = [(1, [1]), (2, [2]), (3, [3]), (4, [2435]), (5, [3467])]
+    dataset = eICUDataset(split="train", task="mortality", load_no_label=True, data_size="big")
+    window_size = 1
+
+    data = [] # train_set[0]["codes"]
+    for i in range(len(dataset)):
+        patient_data = dataset[i]
+        patient_code = patient_data["codes"]
+        patient_formatted_code = []
+        for idx, elt in enumerate(patient_code):
+            patient_formatted_code.append((idx + 1, [elt]))
+        data.append(patient_formatted_code)
+    # put most of the code in a function ?
+    # for d in data:
+    #     get_embedding(d, window_size, "embedding/codes_model.pth")
+    windows = []
+    for d in data:
+        window = segment_time_series(d, window_size)
+        windows.append(window)
+
+    print("Segmented Windows:")
+    for i, window in enumerate(windows):
+        print(f"Window {i}: {window}")
+    
+    windows_batch = []
+    for w in windows:
+        names = []
+        values = []
+        window_batch = []
+        for window in w:
+            for _, tests in window:
+                for test_value in tests:
+                    values.append(test_value)
+            test_names_tensor = torch.empty(0)
+            test_values_tensor = torch.tensor(values, dtype=torch.float)
+            window_batch.append((test_names_tensor, test_values_tensor))
+        windows_batch.append(window_batch)
+
+    # define model hyperparameters
+    name_embed_dim = 8
+    value_dim = 4
+    hidden_dim = 16
+    num_layers = 2
+    num_heads = 2
+    max_seq_len = len(windows_batch) + 1  # ensure this is large enough for your sequences
+    
+    # instantiate the model
+    model = TimeSeriesBERTCLS(0, 0, value_dim, hidden_dim, 
+                           num_layers, num_heads, max_seq_len)
+
+    model.load_state_dict(torch.load("embedding/codes_model.pth", weights_only=True))
+    model.eval()
+    
+    for batch in tqdm(windows_batch):
+        window_embeddings = []
+        for test_names, test_values in batch:
+            emb = model.window_encoder(test_names, test_values)
+            window_embeddings.append(emb)
+        
+        # optionally pad/truncate window_embeddings to self.max_seq_len
+        seq_len = len(window_embeddings)
+        if seq_len < model.max_seq_len:
+            pad_tensor = torch.zeros(model.max_seq_len - seq_len, window_embeddings[0].shape[-1],
+                                     device=window_embeddings[0].device)
+            window_embeddings = window_embeddings + [pad_tensor[i] for i in range(pad_tensor.size(0))]
+        else:
+            window_embeddings = window_embeddings[:model.max_seq_len]
+        
+        window_embeddings = torch.stack(window_embeddings, dim=0)
+        
+        # Forward pass.
+        # The model expects windows_batch to be a list of window tokens.
+        output = model(window_embeddings)  # For TimeSeriesBertCLS, output is a fixed-size tensor.
+        print("\nTransformer Output:")
+        print(output)
+   #  window_embeddings = []
+   #  for test_names, test_values in windows_batch:
+   #      print(test_names, test_values)
+   #      emb = model.window_encoder(test_names, test_values)
+   #      window_embeddings.append(emb)
+
+   #  # optionally pad/truncate window_embeddings to self.max_seq_len
+   #  seq_len = len(window_embeddings)
+   #  if seq_len < model.max_seq_len:
+   #      pad_tensor = torch.zeros(model.max_seq_len - seq_len, window_embeddings[0].shape[-1],
+   #                               device=window_embeddings[0].device)
+   #      window_embeddings = window_embeddings + [pad_tensor[i] for i in range(pad_tensor.size(0))]
+   #  else:
+   #      window_embeddings = window_embeddings[:model.max_seq_len]
+
+   #  # stack and prepend the CLS token: shape becomes (max_seq_len+1, hidden_dim)
+   #  window_embeddings = torch.stack(window_embeddings, dim=0)
+   #  # perform a forward pass.
+   #  output = model(window_embeddings)  # expected shape: (seq_len, hidden_dim)
+    # TODO: store in a file
