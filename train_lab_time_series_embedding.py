@@ -110,7 +110,8 @@ if __name__ == "__main__":
     hidden_dim = 16
     num_layers = 2
     num_heads = 2
-    max_seq_len = len(windows_batch) + 1  # ensure this is large enough for your sequences
+    # max of bigget window is windows batch
+    max_seq_len = max([len (win) for win in windows_batch]) + 1  # ensure this is large enough for your sequences
     model = TimeSeriesBERTCLS(vocab_size, name_embed_dim, value_dim, hidden_dim, 
                            num_layers, num_heads, max_seq_len)
 

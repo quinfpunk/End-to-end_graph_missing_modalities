@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from embedding.bert_embedding import *
 from tqdm import tqdm
-from eicu_dataset import eICUDataset
+from src.dataset.eicu_dataset import eICUDataset
 
 # Lab usage
 if __name__ == "__main__":
@@ -82,11 +82,15 @@ if __name__ == "__main__":
     hidden_dim = 16
     num_layers = 2
     num_heads = 2
+    # find a make sense value, biggest in the whole dataset
+    # here it is 331
     max_seq_len = len(windows_batch) + 1  # ensure this is large enough for your sequences
     
     # instantiate the model
     model = TimeSeriesBERTCLS(vocab_size, name_embed_dim, value_dim, hidden_dim, 
                            num_layers, num_heads, max_seq_len)
+    model.load_state_dict(torch.load("embedding/lab_model.pth", weights_only=True))
+    model.eval()
     
     for batch in tqdm(windows_batch):
         window_embeddings = []
@@ -96,6 +100,7 @@ if __name__ == "__main__":
         if len(window_embeddings) == 0:
             continue
         # optionally pad/truncate window_embeddings to self.max_seq_len
+        # TODO: pad with average
         seq_len = len(window_embeddings)
         if seq_len < model.max_seq_len:
             pad_tensor = torch.zeros(model.max_seq_len - seq_len, window_embeddings[0].shape[-1],
@@ -109,6 +114,7 @@ if __name__ == "__main__":
         # perform a forward pass.
         output = model(window_embeddings)  # expected shape: (seq_len, hidden_dim)
         # TODO: store in a file
-        print("\nTransformer Output:")
-        print(output)
+        f = open("saved_lab_embedding", "a")
+        # print("\nTransformer Output:")
+        print(output, file=f)
 
