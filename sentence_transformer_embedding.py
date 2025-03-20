@@ -53,6 +53,53 @@ def embed_lab(data, window_size, model_name="all-MiniLM-L6-v2", save=False, outp
         print(output, file=f)
     return embeddings
 
+def save_embedding(dataset, filename=os.path.join(processed_data_path, "lab_embedding")):
+    data = {} 
+    for icu_id, icu_stay in tqdm(dataset.items()):
+        patient_lab = icu_stay.lab
+        data[icu_id] = patient_lab
+    window_size = 60
+    pool = Pool()
+    max_processes = multiprocessing.cpu_count()
+    
+    lab_data = list(data.values())
+    patient_ids = list(data.keys())
+    for shards in tqdm(range(int(len(data) / max_processes))):
+        all_embeddings = {}
+        for idx, d in tqdm(enumerate(lab_data[shards * max_processes: (shards + 1) * max_processes])):
+            embed = pool.apply_async(embed_lab, [d, 60])
+            all_embeddings[patient_ids[idx]] = embed # (embed_lab(d, 60))
+
+        for idx  in range(len(all_embeddings.values())):
+            all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
+            
+        if os.path.isfile(f'{filename}_{shards}.pkl'):
+            print(f'{filename}_{shards}.pkl already exists. It will be overwrite !')
+        with open(f'{filename}_{shards}.pkl', 'wb') as f:   
+            pickle.dump(all_embeddings, f)
+    rest_to_compute = int(len(data) / max_processes) * max_processes
+    pool.close()
+    if  (len(data) % max_processes) != 0:
+        all_embeddings = {}
+        for idx, d in tqdm(enumerate(lab_data[rest_to_compute:])):
+            all_embeddings[patient_ids[idx]] = embed_lab(d, 60)
+
+        # print("getting the values")
+        # for idx  in range(len(all_embeddings.values())):
+        #     all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
+
+        if os.path.isfile(f'{filename}_{shards}.pkl'):
+            print(f'{filename}_{shards}.pkl already exists. It will be overwrite !')
+        with open(f'{filename}_{(rest_to_compute / max_processes) + 1}.pkl', 'wb') as f:   
+            pickle.dump(all_embeddings, f)
+    print("done !")
+
+    head, tail = os.path.split(filename)
+    return merge_pickles(tail, head)
+
+
+
+
 
 if __name__ == "__main__":
     

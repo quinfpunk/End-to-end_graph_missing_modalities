@@ -14,7 +14,7 @@ from tqdm import tqdm
 from sentence_transformer_embedding import embed_lab
 from src.dataset.data import eICUData
 from src.utils import create_directory, raw_data_path, processed_data_path, dump_pickle
-from sentence_transformer_embedding import merge_pickles
+from sentence_transformer_embedding import merge_pickles, save_embedding
 
 APACHEAPSVAR = [
     "intubated",
@@ -403,7 +403,9 @@ def post_process_lab(icu_stay_dict, max_len=50):
     #
     #     if len(vectors) > 0:
     #         vectors = np.array(vectors)
-    lab_embeddings = merge_pickles("lab_embedding", processed_data_path)
+    print("Starting the embedding of lab, might take some time")
+    lab_embeddings = save_embedding(icu_stay_dict)
+    print("Finished the embedding of lab !")
     for icu_id, icu_stay in tqdm(icu_stay_dict.items()):
         if len(icu_stay.lab) != 0:
             icu_stay.labvectors = lab_embeddings[icu_id]
