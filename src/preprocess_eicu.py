@@ -3,10 +3,17 @@ import os
 import sys
 
 import math
-import numpy as np
+import random
 
+import numpy as np
+import pandas as pd
+import torch
+from sympy.stats.sampling.sample_numpy import numpy
+from tqdm import tqdm
+
+from sentence_transformer_embedding import embed_lab
 from src.dataset.data import eICUData
-from utils import create_directory, raw_data_path, processed_data_path
+from src.utils import create_directory, raw_data_path, processed_data_path, dump_pickle
 
 APACHEAPSVAR = [
     "intubated",
@@ -40,6 +47,20 @@ APACHEAPSVAR_NCAT = {
     "motor": 6,
     "verbal": 5,
 }
+
+
+def process_df(df, category_col, continuous_col):
+    # Fill NaNs in category columns with the mode (most frequent value)
+    for col in category_col:
+        # df[col].fillna(df[col].mode()[0], inplace=True)
+        df[col].fillna(-1, inplace=True)
+
+    # Normalize continuous columns
+    for col in continuous_col:
+        df[col] = (df[col] - df[col].mean()) / df[col].std()
+        df[col].fillna(-1, inplace=True)
+
+    return df
 
 
 def process_patient(infile, icu_stay_dict):
@@ -285,12 +306,16 @@ def post_process_codes(icu_stay_dict, max_len=50):
         num_valid_codes = sum([1 for t in timestamps if t <= 12])
         types = types[:num_valid_codes]
         codes = codes[:num_valid_codes]
+        # modified
+        times = timestamps[:num_valid_codes]
         if num_valid_codes > max_len:
             max_cut += 1
             types = types[-max_len:]
             codes = codes[-max_len:]
+            times = times[-max_len:]
 
-        icu_stay.trajectory = (types, codes)
+        # icu_stay.trajectory = (types, codes)
+        icu_stay.trajectory = (types, codes, times)
 
         ret_icu_stay_dict[icu_id] = icu_stay
 
@@ -304,7 +329,7 @@ def process_lab(infile, icu_stay_dict):
     count = 0
     missing_icu_id = 0
     out_of_icu_stay = 0
-    for line in csv.DictReader(inff):
+    for line in tqdm(csv.DictReader(inff)):
         if count % 10000 == 0:
             sys.stdout.write("%d\r" % count)
             sys.stdout.flush()
@@ -346,7 +371,7 @@ def post_process_lab(icu_stay_dict, max_len=50):
                 itemid_to_index[itemid] = len(itemid_to_index)
 
     # group by timestamp
-    for icu_id, icu_stay in icu_stay_dict.items():
+    for icu_id, icu_stay in tqdm(icu_stay_dict.items()):
         # (timestamp, list of (item_id, value))
         grouped_lab = []
         for timestamp, _, (itemid, valuenum) in icu_stay.lab:
@@ -361,29 +386,46 @@ def post_process_lab(icu_stay_dict, max_len=50):
                 grouped_lab.append((timestamp, [(itemid, valuenum)]))
         icu_stay.lab = grouped_lab
 
+    # modified
     # convert to numpy array
-    max_cut = 0
-    for icu_id, icu_stay in icu_stay_dict.items():
-        vectors = []
-        vector = np.zeros(len(itemid_to_index))
-        for timestamp, labevents in icu_stay.lab:
-            for itemid, valuenum in labevents:
-                vector[itemid_to_index[itemid]] = valuenum
-            vectors.append(vector.copy())
-        if len(vectors) > max_len:
-            vectors = vectors[-max_len:]
-            max_cut += 1
+    # max_cut = 0
+    # for icu_id, icu_stay in icu_stay_dict.items():
+    #     vectors = []
+    #     vector = np.zeros(len(itemid_to_index))
+    #     for timestamp, labevents in icu_stay.lab:
+    #         for itemid, valuenum in labevents:
+    #             vector[itemid_to_index[itemid]] = valuenum
+    #         vectors.append(vector.copy())
+    #     if len(vectors) > max_len:
+    #         vectors = vectors[-max_len:]
+    #         max_cut += 1
+    #
+    #     if len(vectors) > 0:
+    #         vectors = np.array(vectors)
+    for icu_id, icu_stay in tqdm(icu_stay_dict.items()):
+        if len(icu_stay.lab) != 0:
+            icu_stay.labvectors = embed_lab(icu_stay.lab, 60)[0]
+        else:
+            icu_stay.labvectors = None
 
-        if len(vectors) > 0:
-            vectors = np.array(vectors)
-            icu_stay.labvectors = vectors
-
-    print("hosp_adm with max cut: %d" % max_cut)
+    # print("hosp_adm with max cut: %d" % max_cut)
 
     return icu_stay_dict
 
 
-def process_apacheapsvar(infile, icu_stay_dict):
+def process_apacheapsvar(infile, outfile):
+    apacheapsvar = pd.read_csv(os.path.join(infile))
+    apacheapsvar = apacheapsvar.replace(-1, float("nan"))
+    category = ["intubated", "vent", "dialysis", "eyes", "motor", "verbal", "meds"]
+    continuous = ["urine", "wbc", "temperature", "respiratoryrate", "sodium", "heartrate",
+                  "meanbp", "ph", "hematocrit", "creatinine", "albumin", "pao2",
+                  "pco2", "bun", "glucose", "bilirubin", "fio2"]
+    apacheapsvar = process_df(apacheapsvar, category, continuous)
+    apacheapsvar.to_csv(os.path.join(outfile), index=False)
+    return
+
+
+def post_process_apacheapsvar(infile, icu_stay_dict):
     inff = open(infile, "r")
     count = 0
     missing_icu_id = 0
@@ -394,6 +436,7 @@ def process_apacheapsvar(infile, icu_stay_dict):
 
         icu_id = line["patientunitstayid"]
         apacheapsvar = []
+
         for var in APACHEAPSVAR:
             value = float(line[var])
             if var in APACHEAPSVAR_NCAT:
@@ -404,7 +447,6 @@ def process_apacheapsvar(infile, icu_stay_dict):
                 apacheapsvar.extend(vec)
             else:
                 apacheapsvar.append(value)
-        apacheapsvar = np.array(apacheapsvar)
 
         if icu_id not in icu_stay_dict:
             missing_icu_id += 1
@@ -429,8 +471,9 @@ def main():
     diagnosis_file = input_path + "/diagnosis.csv"
     treatment_file = input_path + "/treatment.csv"
     medication_file = input_path + "/medication.csv"
+    apacheapsvar_file = input_path + "/apacheApsVar.csv"
     lab_file = output_path + "/lab_tmp.csv"
-    apacheapsvar_file = output_path + "/apacheapsvar_tmp.csv"
+    apacheapsvar_tmp_file = output_path + "/apacheApsVar_tmp.csv"
 
     icu_stay_dict = {}
     print("Processing patient.csv")
@@ -455,10 +498,46 @@ def main():
     print("Post-processing lab")
     icu_stay_dict = post_process_lab(icu_stay_dict)
     print("Processing apacheapsvar.csv")
-    icu_stay_dict = process_apacheapsvar(apacheapsvar_file, icu_stay_dict)
+    process_apacheapsvar(apacheapsvar_file, apacheapsvar_tmp_file)
+    # modified
+    print("Post_processing apacheapsvar")
+    icu_stay_dict = post_process_apacheapsvar(apacheapsvar_tmp_file, icu_stay_dict)
 
-    # dump_pickle(icu_stay_dict, os.path.join(output_path, "icu_stay_dict.pkl"))
-    print(icu_stay_dict['141168'].data_print())
+    dump_pickle(icu_stay_dict, os.path.join(output_path, "icu_stay_dict.pkl"))
+    # print(icu_stay_dict.keys())
+    # print(icu_stay_dict['1514528'].data_print())
+
+    small_keys = ['1514528', '3002643', '1085622',  # lab missing
+                  '817256', '1111557', '1533741', '2938988',    # apacheapsvar missing
+                  '2744154', '975639', '971700', '1577211', '348843',
+                  '3212774', '521120', '246533', '2342278', '3245958',
+                  '229343', '2621591', '490596']
+    random.shuffle(small_keys)
+    small_icu_stay_dict = {key: icu_stay_dict[key] for key in small_keys}
+
+    big_keys = []
+    with open(os.path.join(output_path, 'labvectors_flag_filtered_missing.tsv'), 'r') as file:
+        reader = csv.DictReader(file, delimiter='\t')
+        for row in reader:
+            if int(row['']) <= 89:
+                big_keys.append(row['index'])
+    with open(os.path.join(output_path, 'apacheapsvar_flag_filtered_missing.tsv'), 'r') as file:
+        reader = csv.DictReader(file, delimiter='\t')
+        for row in reader:
+            if int(row['']) <= 58:
+                big_keys.append(row['index'])
+    with open(os.path.join(output_path, 'train_indexed.tsv'), 'r') as file:
+        reader = csv.DictReader(file, delimiter='\t')
+        for row in reader:
+            if int(row['']) <= 199:
+                big_keys.append(row['id'])
+    random.shuffle(big_keys)
+    big_icu_stay_dict = {key: icu_stay_dict[key] for key in big_keys}
+
+    dump_pickle(small_icu_stay_dict, os.path.join(output_path, "small_icu_stay_dict.pkl"))
+    dump_pickle(big_icu_stay_dict, os.path.join(output_path, "big_icu_stay_dict.pkl"))
+    # print(small_icu_stay_dict['3245958'].data_print())
+    # print(big_icu_stay_dict['3245958'].data_print())
 
 if __name__ == "__main__":
     main()
