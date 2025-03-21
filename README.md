@@ -18,7 +18,7 @@ Lab project on end-to-end graph missing modalities by Timothée Strouk and Xuech
 6. Run impute.py: 
     + The data is saved in the `{output\_path}/\<split\>` folder. {output\_path} is defined in `src/utils.py`. \<split\> being train, test and validation.
     + Each file's name is the observation id.
-    + Each file contains a tensor. The last element is the label.
-    + Each file can be loaded with a torch.load.
+    + Each file contains a list of tensors. The last element is the label.
+    + Each file can be loaded with pickle.load().
 
 > We increased the k of the feat-Prop to 3, for ApacheApsvar because only 4% of elements were complete
