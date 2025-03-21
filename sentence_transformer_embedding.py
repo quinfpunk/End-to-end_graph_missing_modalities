@@ -12,6 +12,10 @@ import os
 from src.utils import processed_data_path
 
 def merge_pickles(prefix_name: str, path: str):
+    """
+        @brief:
+            Merge pickles at path containing prefix name
+    """
     res = {}
     for file in os.listdir(path):
         if prefix_name in f and ".pkl" in file:
@@ -30,13 +34,17 @@ def preprocess_row(row):
     return " ".join([f"{name}: {value}" for name, value in row]) 
 
 def embed_lab(data, window_size, model_name="all-MiniLM-L6-v2", save=False, output_file="saved_lab_embedding"):
+    """
+        @brief:
+            embed data using the model given in parameters.
+            The results of this specific embedding can be save in output_file.
+    """
 
-    model = SentenceTransformer(model_name) 
+    # device cpu to allow multiprocessing with GPU multiprocessing creates errors
+    model = SentenceTransformer(model_name, device="cpu") 
     window = segment_time_series(data, window_size)
-    # print("Segmented Windows:")
-    # print(f"Window {i}: {window}")
     
-    # only on element is expected in data
+    # stringify data then embed it
     embeddings = []
     global_sentence = ""
     for tmp in window:
@@ -54,12 +62,22 @@ def embed_lab(data, window_size, model_name="all-MiniLM-L6-v2", save=False, outp
     return embeddings
 
 def save_embedding(dataset, filename=os.path.join(processed_data_path, "lab_embedding")):
+    """
+        @brief:
+            Use multiprocessing to speed up the embedding process
+            Saving the embeddings in multiple pickles for better multiprocessing 
+            Saved file will be saved at filename path with _<number> as a suffix
+        @returns:
+            Returns a dictionary containing all embedding
+    """
     data = {} 
     for icu_id, icu_stay in tqdm(dataset.items()):
         patient_lab = icu_stay.lab
         data[icu_id] = patient_lab
     window_size = 60
+    # init pool of process
     pool = Pool()
+    # number of logical thread is extracted 
     max_processes = multiprocessing.cpu_count()
     
     lab_data = list(data.values())
@@ -79,14 +97,11 @@ def save_embedding(dataset, filename=os.path.join(processed_data_path, "lab_embe
             pickle.dump(all_embeddings, f)
     rest_to_compute = int(len(data) / max_processes) * max_processes
     pool.close()
+    # No parallelism anymore as we have less than max_processe embedding to do
     if  (len(data) % max_processes) != 0:
         all_embeddings = {}
         for idx, d in tqdm(enumerate(lab_data[rest_to_compute:])):
             all_embeddings[patient_ids[idx]] = embed_lab(d, 60)
-
-        # print("getting the values")
-        # for idx  in range(len(all_embeddings.values())):
-        #     all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
 
         if os.path.isfile(f'{filename}_{shards}.pkl'):
             print(f'{filename}_{shards}.pkl already exists. It will be overwrite !')
@@ -95,6 +110,7 @@ def save_embedding(dataset, filename=os.path.join(processed_data_path, "lab_embe
     print("done !")
 
     head, tail = os.path.split(filename)
+    # use merge pickle to return a dictionary
     return merge_pickles(tail, head)
 
 
@@ -113,6 +129,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     train_set = eICUDataset(split=args.split, task="mortality", load_no_label=True, data_size=args.dataset_size)
 
+    # This code is the same as save_embedding
+    # It allows the embedding saving to be done as a script 
     data = {} 
     for i in tqdm(range(len(train_set))):
         patient_data = train_set[i]
@@ -143,10 +161,6 @@ if __name__ == "__main__":
         all_embeddings = {}
         for idx, d in tqdm(enumerate(lab_data[rest_to_compute:])):
             all_embeddings[patient_ids[idx]] = embed_lab(d, 60)
-
-        # print("getting the values")
-        # for idx  in range(len(all_embeddings.values())):
-        #     all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
 
         if os.path.isfile(f'{args.filename}_{shards}.pkl'):
             print(f'{args.filename}_{shards}.pkl already exists. It will be overwrite !')
