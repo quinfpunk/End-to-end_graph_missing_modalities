@@ -1,6 +1,32 @@
 # End-to-end\_graph\_missing\_modalities
 Lab project on end-to-end graph missing modalities by Timothée Strouk and Xuecheng Wu
 
+# Structure
+***
+* `End-to-end_graph_missing_modalities/`
+  * `src/`
+    * `dataset/`
+      * `eicu/`: apacheApsVar.csv, diagnosis.csv, lab.csv, medication.csv, patient.csv, treatment.csv
+      * `data.py`
+      * `eicu_dataset.py`
+      * `tokenizer.py`
+      * `vocab.py`
+    * `embedding/`
+      * `bert_embedding.py`
+      * `codes_embedding.py`
+    * `processed_data/`
+      * `eicu/`: apacheapsvar_flag_filtered_missing.tsv, labvectors_flag_filtered_missing.tsv, apacheApsVar_tmp.csv, lab_tmp.csv, embeddings.txt, train_indexed.tsv, vocab.pkl
+        * `task-mortality/`
+        * `task-readmission/`
+    * `output/`: (empty folder)
+    * `eICU_similarity.py`
+    * `utils.py`
+  * `impute.py`
+  * `lab_embedding.py`
+  * `sentence_tranformer_embedding.py`
+  * `preprocess_eicu.py`
+  * `README.md`
+
 # Usage
 1. Edit the path in `src/utils.py` to your local path.
 2. Obtain the eICU dataset and place it under `{raw_data_path}`.
