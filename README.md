@@ -48,3 +48,5 @@ Lab project on end-to-end graph missing modalities by Timothée Strouk and Xuech
     + Each file can be loaded with pickle.load().
 
 > We increased the k of the feat-Prop to 3, for ApacheApsvar because only 4% of elements were complete
+
+> The entire process takes at least 17 hours (4 hours for similarity graph, at least 13 hours for preprocessing)
