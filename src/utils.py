@@ -15,14 +15,13 @@ project_path = os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__f
 project_name = ''
 # server_name = os.uname()[1]
 server_name = platform.uname()[1]
-remote_root = "xxx/src" # change
-sys.path.append("../src/dataset")
+remote_root = "/Users/daniele/PycharmProjects/End-to-end_graph_missing_modalities" # change
 
 try:
-    raw_data_path = os.path.join(remote_root, "dataset\\")
+    raw_data_path = os.path.join(remote_root, "raw_data")
     remote_project_path = os.path.join(remote_root, project_name)
-    processed_data_path = os.path.join(remote_project_path, "processed_data\\")
-    output_path = os.path.join(remote_project_path, "output/")
+    processed_data_path = os.path.join(remote_project_path, "processed_data")
+    output_path = os.path.join(remote_project_path, "output")
 except:
     pass
 

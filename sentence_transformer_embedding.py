@@ -12,13 +12,14 @@ import os
 from tqdm import tqdm
 from src.utils import processed_data_path
 
+model = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
 
 def merge_pickles(prefix_name: str, path: str):
     res = {}
     for file in os.listdir(path):
-        if prefix_name in f and ".pkl" in file:
+        if prefix_name in file and ".pkl" in file:
             # open file and load pickle update the dictionary
-            with open(file, "rb") as f:
+            with open(os.path.join(path, file), "rb") as f:
                 tmp = pickle.load(f)
                 res.update(tmp)
     return res
@@ -32,7 +33,6 @@ def preprocess_row(row):
 
 def embed_lab(data, window_size, model_name="all-MiniLM-L6-v2", save=False, output_file="saved_lab_embedding"):
     # model = SentenceTransformer(model_name, device="cuda", model_kwargs={"torch_dtype": "float16"})
-    model = SentenceTransformer(model_name, device="cpu")
     window = segment_time_series(data, window_size)
     # print("Segmented Windows:")
     # print(f"Window {i}: {window}")
@@ -55,7 +55,7 @@ def embed_lab(data, window_size, model_name="all-MiniLM-L6-v2", save=False, outp
     return embeddings
 
 
-def save_embedding(dataset, filename=os.path.join(processed_data_path, "lab_embedding")):
+def save_embedding(dataset, filename="/eicu_all/lab_embedding"):
     data = {}
     for icu_id, icu_stay in tqdm(dataset.items()):
         patient_lab = icu_stay.lab
@@ -75,9 +75,9 @@ def save_embedding(dataset, filename=os.path.join(processed_data_path, "lab_embe
         for idx in range(len(all_embeddings.values())):
             all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
 
-        if os.path.isfile(f'{filename}_{shards}.pkl'):
-            print(f'{filename}_{shards}.pkl already exists. It will be overwrite !')
-        with open(f'{filename}_{shards}.pkl', 'wb') as f:
+        if os.path.isfile(f'{processed_data_path}{filename}_{shards}.pkl'):
+            print(f'{processed_data_path}{filename}_{shards}.pkl already exists. It will be overwrite !')
+        with open(f'{processed_data_path}{filename}_{shards}.pkl', 'wb') as f:
             pickle.dump(all_embeddings, f)
     rest_to_compute = int(len(data) / max_processes) * max_processes
     pool.close()
@@ -90,13 +90,13 @@ def save_embedding(dataset, filename=os.path.join(processed_data_path, "lab_embe
         # for idx  in range(len(all_embeddings.values())):
         #     all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
 
-        if os.path.isfile(f'{filename}_{shards}.pkl'):
-            print(f'{filename}_{shards}.pkl already exists. It will be overwrite !')
-        with open(f'{filename}_{(rest_to_compute / max_processes) + 1}.pkl', 'wb') as f:
+        if os.path.isfile(f'{processed_data_path}{filename}_{shards}.pkl'):
+            print(f'{processed_data_path}{filename}_{shards}.pkl already exists. It will be overwrite !')
+        with open(f'{processed_data_path}{filename}_{(rest_to_compute / max_processes) + 1}.pkl', 'wb') as f:
             pickle.dump(all_embeddings, f)
     print("done !")
 
-    head, tail = os.path.split(filename)
+    head, tail = processed_data_path+'/eicu_all/', 'lab_embedding'
     return merge_pickles(tail, head)
 
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
         prog='Embedding',
         description='Generate lab embedding. Pay attention to have the icu_stay_dict.pkl generated before running the script ! ',
         epilog='A simple use of the script would be "python sentence_transformer_embedding.py". This would embed the whole train dataset and store the results into the processed_data_path.')
-    parser.add_argument('-f', '--filename', default=os.path.join(processed_data_path, "lab_embedding"))
+    parser.add_argument('-f', '--filename', default='/eicu_all/lab_embedding',)
     parser.add_argument('--dataset_size', default="")
     parser.add_argument('--split', default="train")
     args = parser.parse_args()
@@ -132,9 +132,9 @@ if __name__ == "__main__":
         for idx in range(len(all_embeddings.values())):
             all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
 
-        if os.path.isfile(f'{args.filename}_{shards}.pkl'):
-            print(f'{args.filename}_{shards}.pkl already exists. It will be overwrite !')
-        with open(f'{args.filename}_{shards}.pkl', 'wb') as f:
+        if os.path.isfile(f'{processed_data_path}{args.filename}_{shards}.pkl'):
+            print(f'{processed_data_path}{args.filename}_{shards}.pkl already exists. It will be overwrite !')
+        with open(f'{processed_data_path}{args.filename}_{shards}.pkl', 'wb') as f:
             pickle.dump(all_embeddings, f)
     rest_to_compute = int(len(data) / max_processes) * max_processes
     pool.close()
@@ -147,9 +147,9 @@ if __name__ == "__main__":
         # for idx  in range(len(all_embeddings.values())):
         #     all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
 
-        if os.path.isfile(f'{args.filename}_{shards}.pkl'):
-            print(f'{args.filename}_{shards}.pkl already exists. It will be overwrite !')
-        with open(f'{args.filename}_{(rest_to_compute / max_processes) + 1}.pkl', 'wb') as f:
+        if os.path.isfile(f'{processed_data_path}{args.filename}_{shards}.pkl'):
+            print(f'{processed_data_path}{args.filename}_{shards}.pkl already exists. It will be overwrite !')
+        with open(f'{processed_data_path}{args.filename}_{(rest_to_compute / max_processes) + 1}.pkl', 'wb') as f:
             pickle.dump(all_embeddings, f)
     print("done !")
 

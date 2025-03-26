@@ -466,8 +466,8 @@ def post_process_apacheapsvar(infile, icu_stay_dict):
 
 
 def main():
-    input_path = os.path.join(raw_data_path, "eicu")
-    output_path = os.path.join(processed_data_path, "eicu")
+    input_path = os.path.join(raw_data_path, "eicu-collaborative-research-database-2.0")
+    output_path = os.path.join(processed_data_path, "eicu_all")
     create_directory(output_path)
 
     patient_file = input_path + "/patient.csv"
