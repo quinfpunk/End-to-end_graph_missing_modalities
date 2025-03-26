@@ -67,10 +67,11 @@ def save_embedding(dataset, filename="/eicu_all/lab_embedding"):
     lab_data = list(data.values())
     patient_ids = list(data.keys())
     for shards in tqdm(range(int(len(data) / max_processes))):
+        shards_counter = shards
         all_embeddings = {}
         for idx, d in tqdm(enumerate(lab_data[shards * max_processes: (shards + 1) * max_processes])):
             embed = pool.apply_async(embed_lab, [d, 60])
-            all_embeddings[patient_ids[idx]] = embed  # (embed_lab(d, 60))
+            all_embeddings[patient_ids[idx + shards*max_processes]] = embed  # (embed_lab(d, 60))
 
         for idx in range(len(all_embeddings.values())):
             all_embeddings[list(all_embeddings.keys())[idx]] = list(all_embeddings.values())[idx].get()
@@ -84,7 +85,7 @@ def save_embedding(dataset, filename="/eicu_all/lab_embedding"):
     if (len(data) % max_processes) != 0:
         all_embeddings = {}
         for idx, d in tqdm(enumerate(lab_data[rest_to_compute:])):
-            all_embeddings[patient_ids[idx]] = embed_lab(d, 60)
+            all_embeddings[patient_ids[idx + (shards_counter+1)*max_processes]] = embed_lab(d, 60)
 
         # print("getting the values")
         # for idx  in range(len(all_embeddings.values())):
