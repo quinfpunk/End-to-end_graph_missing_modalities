@@ -1,4 +1,4 @@
-snf
+snfpy
 torch==2.0.1
 numpy
 pandas
