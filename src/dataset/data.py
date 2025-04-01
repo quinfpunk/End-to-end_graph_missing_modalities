@@ -37,13 +37,9 @@ class eICUData:
         self.trajectory = []
 
         # labs
-        # (timestamp in min (int), list of (item_id, value))
-        self.lab = []
-        # numpy array
         self.labvectors = None
 
         # apacheapsvar
-        # numpy array
         self.apacheapsvar = None
 
     def __repr__(self):
