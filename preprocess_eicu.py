@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from src.dataset.data import eICUData
 from src.utils import create_directory, raw_data_path, processed_data_path, dump_pickle
-from sentence_transformer_embedding import merge_pickles, save_embedding, embed_lab
+from sentence_transformer_embedding import save_embedding
 
 APACHEAPSVAR = [
     "intubated",
@@ -385,7 +385,6 @@ def post_process_lab(icu_stay_dict, max_len=50):
                 grouped_lab.append((timestamp, [(itemid, valuenum)]))
         icu_stay.lab = grouped_lab
 
-    # modified
     # convert to numpy array
     # max_cut = 0
     # for icu_id, icu_stay in icu_stay_dict.items():
@@ -398,9 +397,12 @@ def post_process_lab(icu_stay_dict, max_len=50):
     #     if len(vectors) > max_len:
     #         vectors = vectors[-max_len:]
     #         max_cut += 1
-    #
+    # 
     #     if len(vectors) > 0:
     #         vectors = np.array(vectors)
+    #         icu_stay.labvectors = vectors
+
+    # modified
     print("Starting the embedding of lab, might take some time")
     lab_embeddings = save_embedding(icu_stay_dict)
     print("Finished the embedding of lab !")
@@ -466,7 +468,7 @@ def post_process_apacheapsvar(infile, icu_stay_dict):
 
 
 def main():
-    input_path = os.path.join(raw_data_path, "eicu-collaborative-research-database-2.0")
+    input_path = os.path.join(raw_data_path, "")
     output_path = os.path.join(processed_data_path, "eicu_all")
     create_directory(output_path)
 
@@ -477,6 +479,7 @@ def main():
     apacheapsvar_file = input_path + "/apacheApsVar.csv"
     lab_file = output_path + "/lab_tmp.csv"
     apacheapsvar_tmp_file = output_path + "/apacheApsVar_tmp.csv"
+
 
     icu_stay_dict = {}
     print("Processing patient.csv")
@@ -502,45 +505,12 @@ def main():
     icu_stay_dict = post_process_lab(icu_stay_dict)
     print("Processing apacheapsvar.csv")
     process_apacheapsvar(apacheapsvar_file, apacheapsvar_tmp_file)
-    # modified
     print("Post_processing apacheapsvar")
     icu_stay_dict = post_process_apacheapsvar(apacheapsvar_tmp_file, icu_stay_dict)
 
+
     dump_pickle(icu_stay_dict, os.path.join(output_path, "icu_stay_dict.pkl"))
-    # print(icu_stay_dict.keys())
-    # print(icu_stay_dict['1514528'].data_print())
 
-    small_keys = ['1514528', '3002643', '1085622',  # lab missing
-                  '817256', '1111557', '1533741', '2938988',    # apacheapsvar missing
-                  '2744154', '975639', '971700', '1577211', '348843',
-                  '3212774', '521120', '246533', '2342278', '3245958',
-                  '229343', '2621591', '490596']
-    random.shuffle(small_keys)
-    small_icu_stay_dict = {key: icu_stay_dict[key] for key in small_keys}
-
-    big_keys = []
-    with open(os.path.join(output_path, 'labvectors_flag_filtered_missing.tsv'), 'r') as file:
-        reader = csv.DictReader(file, delimiter='\t')
-        for row in reader:
-            if int(row['']) <= 89:
-                big_keys.append(row['index'])
-    with open(os.path.join(output_path, 'apacheapsvar_flag_filtered_missing.tsv'), 'r') as file:
-        reader = csv.DictReader(file, delimiter='\t')
-        for row in reader:
-            if int(row['']) <= 58:
-                big_keys.append(row['index'])
-    with open(os.path.join(output_path, 'train_indexed.tsv'), 'r') as file:
-        reader = csv.DictReader(file, delimiter='\t')
-        for row in reader:
-            if int(row['']) <= 199:
-                big_keys.append(row['id'])
-    random.shuffle(big_keys)
-    big_icu_stay_dict = {key: icu_stay_dict[key] for key in big_keys}
-
-    dump_pickle(small_icu_stay_dict, os.path.join(output_path, "small_icu_stay_dict.pkl"))
-    dump_pickle(big_icu_stay_dict, os.path.join(output_path, "big_icu_stay_dict.pkl"))
-    # print(small_icu_stay_dict['3245958'].data_print())
-    # print(big_icu_stay_dict['3245958'].data_print())
 
 if __name__ == "__main__":
     main()
