@@ -1,7 +1,6 @@
 import os
 
 import torch
-from scipy.interpolate.dfitpack import types
 from torch.utils.data import Dataset
 
 from src.dataset.tokenizer import eICUTokenizer
@@ -10,34 +9,8 @@ import pickle
 import numpy
 
 
-def merge_pickles(path: str):
-    """
-        @brief:
-            Merge pickles at path
-    """
-    res = {}
-    for file in os.listdir(path):
-        if ".pkl" in file:
-            # open file and load pickle update the dictionary
-            patient_id = file.split(".")[0]
-            tmp = {}
-            with open(file, "rb") as f:
-                embeddings = pickle.load(f)
-                # the hard coded index are coming from imput.py build dataset function
-                tmp[patient_id] = {'age': embeddings[0],
-                                   'gender': embeddings[1],
-                                   'ethnicity': embeddings[2],
-                                   'codes': embeddings[3],
-                                   'apacheapsvar': embeddings[4],
-                                   'lab': embeddings[5],
-                                   'label': embeddings[6]
-                                   }
-                res.update(tmp)
-    return res
-
-
 class eICUDataset(Dataset, ):
-    def __init__(self, split, task, load_no_label=False, dev=False, return_raw=False, data_size=""):
+    def __init__(self, split, task, load_no_label=False, dev=False, return_raw=False):
         if dev:
             assert split == "train"
         if load_no_label:
@@ -45,20 +18,13 @@ class eICUDataset(Dataset, ):
         self.load_no_label = load_no_label
         self.split = split
         self.task = task
-        # merge all {id}.pkl in the folder
-        self.all_hosp_adm_dict = merge_pickles(os.path.join(processed_data_path, split))
-        # if data_size == "small":
-        #     self.all_hosp_adm_dict = load_pickle(os.path.join(processed_data_path, "eicu/small_icu_stay_dict.pkl"))
-        # elif data_size == "big":
-        #     self.all_hosp_adm_dict = load_pickle(os.path.join(processed_data_path, "eicu/big_icu_stay_dict.pkl"))
-        # else:
-        #     self.all_hosp_adm_dict = load_pickle(os.path.join(processed_data_path, "eicu/icu_stay_dict.pkl"))
+        self.all_hosp_adm_dict = load_pickle(os.path.join(processed_data_path, "eicu_all/15000_icu_stay_dict.pkl"))
         included_admission_ids = read_txt(
-            os.path.join(processed_data_path, f"eicu/task-{task}/{split}_admission_ids.txt"))
+            os.path.join(processed_data_path, f"eicu_all/task-{task}/{split}_admission_ids.txt"))
         self.no_label_admission_ids = []
         if load_no_label:
             no_label_admission_ids = read_txt(
-                os.path.join(processed_data_path, f"eicu/task-{task}/no_label_admission_ids.txt"))
+                os.path.join(processed_data_path, f"eicu_all/task-{task}/no_label_admission_ids.txt"))
             self.no_label_admission_ids = no_label_admission_ids
             included_admission_ids += no_label_admission_ids
         self.included_admission_ids = included_admission_ids
@@ -67,12 +33,12 @@ class eICUDataset(Dataset, ):
         self.return_raw = return_raw
         self.tokenizer = eICUTokenizer()
 
+
     def __len__(self):
-        return len(self.all_hosp_adm_dict)
+        return len(self.included_admission_ids)
 
     def __getitem__(self, index):
-        keys = list(self.all_hosp_adm_dict.keys())
-        icu_id = keys[index]
+        icu_id = self.included_admission_ids[index]
         # icu_stay: eICUData
         icu_stay = self.all_hosp_adm_dict[icu_id]
 
@@ -80,19 +46,21 @@ class eICUDataset(Dataset, ):
         gender = icu_stay.gender
         ethnicity = icu_stay.ethnicity
         '''
-            codes
+            codes 
         '''
         # return raw compatibility
-        types = []
-        codes = icu_stay.codes
+        # types = []
+        # codes = icu_stay.codes
+        types = icu_stay.trajectory[0]
+        codes = icu_stay.trajectory[1]
         codes_flag = True
 
         '''
             lab
         '''
-        labvectors = icu_stay.lab
+        labvectors = icu_stay.labvectors
         labvectors_flag = True
-        if len(labvectors) == 0:
+        if labvectors is None:
             labvectors = numpy.zeros(384)
             labvectors_flag = False
 
@@ -110,7 +78,7 @@ class eICUDataset(Dataset, ):
         '''
             label
         '''
-        label = float(icu_stay.label)
+        label = float(getattr(icu_stay, self.task))
         label_flag = True
         if icu_id in self.no_label_admission_ids:
             label_flag = False
@@ -127,30 +95,34 @@ class eICUDataset(Dataset, ):
         return_dict["age"] = age
         return_dict["gender"] = gender
         return_dict["ethnicity"] = ethnicity
+        return_dict["types"] = types
         return_dict["codes"] = codes
+        return_dict["codes_flag"] = codes_flag
 
-        return_dict["lab"] = labvectors
+        return_dict["labvectors"] = labvectors
+        return_dict["labvectors_flag"] = labvectors_flag
 
         return_dict["apacheapsvar"] = apacheapsvar
+        return_dict["apacheapsvar_flag"] = apacheapsvar_flag
 
-        '''
-            treatment, medication, diagnosis
-        '''
         return_dict["label"] = label
 
         return return_dict
+
 
     def get_item_by_id(self, id):
         return self.all_hosp_adm_dict[id]
 
 
 if __name__ == "__main__":
-    dataset = eICUDataset(split="train", task="mortality", load_no_label=True)
+    dataset = eICUDataset(split="train", task="mortality", load_no_label=False)
     print(len(dataset))
     item = dataset[0]
     print(item["id"])
     print(item["age"])
     print(item["gender"])
     print(item["ethnicity"])
-    print(item["lab"])
+    print(item["labvectors"])
     print(item["codes"])
+    print(item["label"])
+
