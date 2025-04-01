@@ -11,15 +11,18 @@ from sentence_transformer_embedding import embed_lab
 import numpy as np
 
 
-def one_hot_encoder(modal):
+def one_hot_encoder(modal, num_modal):
     modal_int = modal.to(torch.int64)
-    num_modal = int(max(modal))+1
+    # num_modal = int(max(modal))+1
     modal_onehot = F.one_hot(modal_int.flatten(), num_classes=num_modal)
     return modal_onehot
 
 
 def euclidean_dist(x, y):
     b = x.size(0)
+    if x.dim() == 3:
+        x = x.squeeze(1)
+        y = y.squeeze(1)
     xx = torch.pow(x, 2).sum(1, keepdim=True).expand(b, b)
     yy = torch.pow(y, 2).sum(1, keepdim=True).expand(b, b).t()
     dist = xx + yy - 2 * torch.mm(x, y.t())
@@ -79,10 +82,11 @@ class Similarity:
 class eICUPatientSimilarity:
     def __init__(self, dataset):
         self.dataset = dataset
-        if type(dataset) == dict:
-            self.index = list(self.dataset["id"])
-        else:
-            self.index = list(self.dataset.all_hosp_adm_dict.keys())
+        # if type(dataset) == dict:
+        #     self.index = list(self.dataset["id"])
+        # else:
+        #     self.index = list(self.dataset.all_hosp_adm_dict.keys())
+        self.index = dataset.included_admission_ids
 
     # age, gender, ethnicity
     def get_similarity(self):
@@ -97,9 +101,9 @@ class eICUPatientSimilarity:
             gender[i] = self.dataset[i]['gender']
             ethnicity[i] = self.dataset[i]['ethnicity']
 
-        age_onehot = one_hot_encoder(age)
-        gender_onehot = one_hot_encoder(gender)
-        ethnicity_onehot = one_hot_encoder(ethnicity)
+        age_onehot = one_hot_encoder(age, num_modal=8)
+        gender_onehot = one_hot_encoder(gender, num_modal=5)
+        ethnicity_onehot = one_hot_encoder(ethnicity, num_modal=7)
         # print(ethnicity_onehot.shape)
 
         age_similarity_matrix = gaussian_kernel(age_onehot)
@@ -135,7 +139,6 @@ class eICUPatientSimilarity:
     def get_labevents_similarity(self):
         lab = []
         index_table = []
-        window_size = 60  # group data points that occur within the same
         for i in tqdm(range(len(self.dataset))):
             if self.dataset[i]['labvectors_flag']:
                 index_table.append(self.dataset[i]["id"])
@@ -178,9 +181,9 @@ class eICUPatientSimilarity:
 
 if __name__ == '__main__':
     # test
-    dataset = eICUDataset(split="train", task="mortality", load_no_label=True, data_size="big")
+    dataset = eICUDataset(split="train", task="mortality", load_no_label=False)
     print(len(dataset))
-    print(len(dataset.all_hosp_adm_dict.keys()))
+    # print(len(dataset.all_hosp_adm_dict.keys()))
 
     patient_similarity = eICUPatientSimilarity(dataset)
 
@@ -194,7 +197,7 @@ if __name__ == '__main__':
     print(age_similarity.matrix)
     print(gender_similarity.matrix)
     print(ethnicity_similarity.matrix)
-    print(apacheapsvar_similarity.matrix)
-    print(lab_similarity.matrix)
+    print(apacheapsvar_similarity.matrix.shape)
+    print(lab_similarity.matrix.shape)
     print(codes_similarity.matrix)
 
