@@ -132,7 +132,7 @@ test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False
 # Model, Loss, Optimizer
 model = Model(input_channels=len(train_dataset[0][0]), hidden_channels=128, dropout=args.dropout)
 criterion = nn.BCELoss()
-optimizer = optim.Adam(model.parameters(), lr=args.lr)
+optimizer = optim.SGD(model.parameters(), lr=args.lr)
 
 # Train and Evaluate
 train_model(model, train_loader, criterion, optimizer, num_epochs=args.epochs, device=device)
